@@ -1,0 +1,145 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+<meta charset="UTF-8">
+<title>ADLANG Community Platform</title>
+<style>
+/* CSS inline para tudo */
+body { font-family: Arial, sans-serif; background:#f0f0f0; margin:0; padding:0; }
+header { background:#222; color:#fff; padding:15px; text-align:center; }
+.container { max-width:900px; margin:20px auto; padding:20px; background:#fff; border-radius:10px; box-shadow:0 0 10px rgba(0,0,0,0.2);}
+button { padding:8px 12px; border:none; border-radius:5px; background:#28a745; color:#fff; cursor:pointer; margin-left:5px; }
+button:hover { background:#218838; }
+.language { border:1px solid #ddd; padding:10px; margin-bottom:10px; border-radius:5px; display:flex; justify-content:space-between; align-items:center; }
+input[type=text], textarea { padding:6px; border:1px solid #ccc; border-radius:5px; width:200px; margin-right:10px; }
+textarea { width:100%; resize:none; }
+h2 { margin-top:30px; }
+.forum-post { border:1px solid #ccc; padding:8px; margin-bottom:5px; border-radius:5px; background:#fafafa; }
+</style>
+</head>
+<body>
+
+<header>
+<h1>ADLANG Community Platform</h1>
+</header>
+
+<div class="container">
+<div id="loginStatus">Não logado</div>
+<button id="loginBtn">Login com GitHub</button>
+
+<h2>Linguagens Públicas</h2>
+<div id="languages"></div>
+
+<h3>Adicionar Nova Linguagem</h3>
+<input type="text" id="langName" placeholder="Nome da linguagem">
+<input type="text" id="langRepo" placeholder="URL do GitHub repo">
+<button id="addLang">Adicionar Linguagem</button>
+
+<h2>Forum & Updates</h2>
+<div id="forumPosts"></div>
+<textarea id="forumText" placeholder="Escreva uma mensagem"></textarea><br>
+<button id="addPost">Postar</button>
+</div>
+
+<script>
+const CLIENT_ID = "SEU_CLIENT_ID"; // GitHub OAuth App
+const REDIRECT_URI = "http://seusite.com/index.html";
+
+// ======= GitHub OAuth real =======
+let user = localStorage.getItem('github_user');
+const loginStatus = document.getElementById('loginStatus');
+const loginBtn = document.getElementById('loginBtn');
+
+function updateLoginUI() {
+  if(user) {
+    loginStatus.innerHTML = "Logado como: " + user;
+    loginBtn.style.display = "none";
+  } else {
+    loginStatus.innerHTML = "Não logado";
+    loginBtn.style.display = "inline-block";
+  }
+}
+
+// Redireciona para GitHub OAuth
+loginBtn.onclick = function() {
+  const url = `https://github.com/login/oauth/authorize?client_id=${CLIENT_ID}&redirect_uri=${REDIRECT_URI}&scope=read:user`;
+  window.location.href = url;
+}
+
+// ======= Captura code do GitHub após login =======
+const params = new URLSearchParams(window.location.search);
+if(params.has("code")) {
+  const code = params.get("code");
+  fetch("oauth.php?code=" + code)
+    .then(r => r.json())
+    .then(data => {
+      user = data.login;
+      localStorage.setItem("github_user", user);
+      updateLoginUI();
+    })
+    .catch(err => alert("Erro no login: " + err));
+}
+
+updateLoginUI();
+
+// ======= Linguagens Públicas via localStorage =======
+let languages = JSON.parse(localStorage.getItem('adlang_languages_public') || "[]");
+const langContainer = document.getElementById('languages');
+
+function renderLanguages() {
+  langContainer.innerHTML = "";
+  languages.forEach(lang => {
+    const div = document.createElement('div');
+    div.className = "language";
+    div.innerHTML = `<span>${lang.name}</span>
+                     <div>
+                     <a href="${lang.repo}/archive/refs/heads/main.zip" target="_blank"><button>Baixar Repo</button></a>
+                     </div>`;
+    langContainer.appendChild(div);
+  });
+}
+
+document.getElementById('addLang').onclick = function() {
+  const name = document.getElementById('langName').value.trim();
+  const repo = document.getElementById('langRepo').value.trim();
+  if(!user) { alert("Faça login para adicionar linguagens!"); return; }
+  if(name && repo) {
+    languages.push({name:name, repo:repo, author:user});
+    localStorage.setItem('adlang_languages_public', JSON.stringify(languages));
+    renderLanguages();
+    document.getElementById('langName').value = "";
+    document.getElementById('langRepo').value = "";
+  } else { alert("Preencha ambos os campos!"); }
+}
+
+// ======= Forum Público via localStorage =======
+let forumPosts = JSON.parse(localStorage.getItem('adlang_forum_public') || "[]");
+const forumContainer = document.getElementById('forumPosts');
+
+function renderForum() {
+  forumContainer.innerHTML = "";
+  forumPosts.forEach(post => {
+    const div = document.createElement('div');
+    div.className = "forum-post";
+    div.innerHTML = `<strong>${post.user}</strong>: ${post.text}`;
+    forumContainer.appendChild(div);
+  });
+}
+
+document.getElementById('addPost').onclick = function() {
+  if(!user) { alert("Faça login para postar!"); return; }
+  const text = document.getElementById('forumText').value.trim();
+  if(text) {
+    forumPosts.push({user:user,text:text});
+    localStorage.setItem('adlang_forum_public', JSON.stringify(forumPosts));
+    renderForum();
+    document.getElementById('forumText').value = "";
+  }
+}
+
+renderLanguages();
+renderForum();
+</script>
+
+</body>
+</html>
