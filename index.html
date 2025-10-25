@@ -4,7 +4,6 @@
 <meta charset="UTF-8">
 <title>ADLANG Community Platform</title>
 <style>
-/* CSS inline para tudo */
 body { font-family: Arial, sans-serif; background:#f0f0f0; margin:0; padding:0; }
 header { background:#222; color:#fff; padding:15px; text-align:center; }
 .container { max-width:900px; margin:20px auto; padding:20px; background:#fff; border-radius:10px; box-shadow:0 0 10px rgba(0,0,0,0.2);}
@@ -42,11 +41,14 @@ h2 { margin-top:30px; }
 </div>
 
 <script>
+// CONFIGURAÇÃO
 const CLIENT_ID = "SEU_CLIENT_ID"; // GitHub OAuth App
-const REDIRECT_URI = "http://seusite.com/index.html";
+const GIST_ID = "SEU_GIST_PUBLICO_ID"; // Gist que armazena linguagens e fórum
+const GIST_FILENAME = "adlang_data.json";
 
-// ======= GitHub OAuth real =======
 let user = localStorage.getItem('github_user');
+let token = localStorage.getItem('github_token');
+
 const loginStatus = document.getElementById('loginStatus');
 const loginBtn = document.getElementById('loginBtn');
 
@@ -60,86 +62,102 @@ function updateLoginUI() {
   }
 }
 
-// Redireciona para GitHub OAuth
+// Login GitHub real
 loginBtn.onclick = function() {
-  const url = `https://github.com/login/oauth/authorize?client_id=${CLIENT_ID}&redirect_uri=${REDIRECT_URI}&scope=read:user`;
+  const url = `https://github.com/login/oauth/authorize?client_id=${CLIENT_ID}&scope=gist`;
   window.location.href = url;
 }
 
-// ======= Captura code do GitHub após login =======
+// Captura code do GitHub
 const params = new URLSearchParams(window.location.search);
 if(params.has("code")) {
   const code = params.get("code");
-  fetch("oauth.php?code=" + code)
-    .then(r => r.json())
-    .then(data => {
-      user = data.login;
-      localStorage.setItem("github_user", user);
-      updateLoginUI();
-    })
-    .catch(err => alert("Erro no login: " + err));
+  // Aqui você precisaria trocar code por token usando backend seguro (não expor CLIENT_SECRET no JS)
+  alert("Para login real, crie um backend que troque code por token. Por segurança, não use CLIENT_SECRET no JS.");
 }
 
-updateLoginUI();
+// Funções utilitárias para Gist
+async function getGistData() {
+  const res = await fetch(`https://api.github.com/gists/${GIST_ID}`);
+  const gist = await res.json();
+  return JSON.parse(gist.files[GIST_FILENAME].content);
+}
 
-// ======= Linguagens Públicas via localStorage =======
-let languages = JSON.parse(localStorage.getItem('adlang_languages_public') || "[]");
-const langContainer = document.getElementById('languages');
+async function updateGistData(newData) {
+  if(!token) { alert("Faça login via GitHub para modificar dados!"); return; }
+  await fetch(`https://api.github.com/gists/${GIST_ID}`, {
+    method: "PATCH",
+    headers: {
+      "Authorization": "token " + token,
+      "Content-Type": "application/json"
+    },
+    body: JSON.stringify({
+      files: {
+        [GIST_FILENAME]: { content: JSON.stringify(newData, null, 2) }
+      }
+    })
+  });
+}
 
-function renderLanguages() {
-  langContainer.innerHTML = "";
-  languages.forEach(lang => {
+// Render linguagens
+async function renderLanguages() {
+  const data = await getGistData();
+  const container = document.getElementById('languages');
+  container.innerHTML = "";
+  data.languages.forEach(lang => {
     const div = document.createElement('div');
     div.className = "language";
-    div.innerHTML = `<span>${lang.name}</span>
+    div.innerHTML = `<span>${lang.name} (por ${lang.author})</span>
                      <div>
                      <a href="${lang.repo}/archive/refs/heads/main.zip" target="_blank"><button>Baixar Repo</button></a>
                      </div>`;
-    langContainer.appendChild(div);
+    container.appendChild(div);
   });
 }
 
-document.getElementById('addLang').onclick = function() {
-  const name = document.getElementById('langName').value.trim();
-  const repo = document.getElementById('langRepo').value.trim();
-  if(!user) { alert("Faça login para adicionar linguagens!"); return; }
-  if(name && repo) {
-    languages.push({name:name, repo:repo, author:user});
-    localStorage.setItem('adlang_languages_public', JSON.stringify(languages));
-    renderLanguages();
-    document.getElementById('langName').value = "";
-    document.getElementById('langRepo').value = "";
-  } else { alert("Preencha ambos os campos!"); }
-}
-
-// ======= Forum Público via localStorage =======
-let forumPosts = JSON.parse(localStorage.getItem('adlang_forum_public') || "[]");
-const forumContainer = document.getElementById('forumPosts');
-
-function renderForum() {
-  forumContainer.innerHTML = "";
-  forumPosts.forEach(post => {
+// Render forum
+async function renderForum() {
+  const data = await getGistData();
+  const container = document.getElementById('forumPosts');
+  container.innerHTML = "";
+  data.forum.forEach(post => {
     const div = document.createElement('div');
     div.className = "forum-post";
     div.innerHTML = `<strong>${post.user}</strong>: ${post.text}`;
-    forumContainer.appendChild(div);
+    container.appendChild(div);
   });
 }
 
-document.getElementById('addPost').onclick = function() {
-  if(!user) { alert("Faça login para postar!"); return; }
-  const text = document.getElementById('forumText').value.trim();
-  if(text) {
-    forumPosts.push({user:user,text:text});
-    localStorage.setItem('adlang_forum_public', JSON.stringify(forumPosts));
-    renderForum();
-    document.getElementById('forumText').value = "";
-  }
+// Adicionar linguagem
+document.getElementById('addLang').onclick = async function() {
+  if(!user) { alert("Faça login para adicionar linguagens!"); return; }
+  const name = document.getElementById('langName').value.trim();
+  const repo = document.getElementById('langRepo').value.trim();
+  if(!name || !repo) { alert("Preencha todos os campos!"); return; }
+  const data = await getGistData();
+  data.languages.push({name:name, repo:repo, author:user});
+  await updateGistData(data);
+  renderLanguages();
 }
 
+// Adicionar post no fórum
+document.getElementById('addPost').onclick = async function() {
+  if(!user) { alert("Faça login para postar!"); return; }
+  const text = document.getElementById('forumText').value.trim();
+  if(!text) return;
+  const data = await getGistData();
+  data.forum.push({user:user,text:text});
+  await updateGistData(data);
+  renderForum();
+  document.getElementById('forumText').value = "";
+}
+
+// Inicial
 renderLanguages();
 renderForum();
+updateLoginUI();
 </script>
 
 </body>
 </html>
+
